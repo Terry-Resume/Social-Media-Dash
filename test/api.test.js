@@ -23,7 +23,7 @@ const req = (extra = {}) => ({ method: 'GET', headers: { 'x-demo-role': 'member'
 const json = body => async () => ({ ok: true, json: async () => body })
 
 const saved = { ...process.env }
-beforeEach(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; Object.assign(process.env, saved); delete process.env.KATO8_DEMO; delete process.env.CLERK_SECRET_KEY })
+beforeEach(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; Object.assign(process.env, saved); delete process.env.KATO8_DEMO; delete process.env.VITE_KATO8_DEMO; delete process.env.CLERK_SECRET_KEY })
 after(() => { for (const k of Object.keys(process.env)) delete process.env[k]; Object.assign(process.env, saved) })
 
 test('buildMetrics never invents a number: missing values are null and listed as unavailable', () => {
