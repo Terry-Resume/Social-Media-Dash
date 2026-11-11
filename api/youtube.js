@@ -1,25 +1,16 @@
-export default async function handler(req, res) {
-  const key       = process.env.YOUTUBE_API_KEY;
-  const channelId = process.env.YOUTUBE_CHANNEL_ID;
-  if (!key || !channelId) return res.status(503).json({ error: "Not configured" });
+import { platformHandler, PlatformError, count } from './_lib/platform.js'
 
-  try {
-    const r = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelId}&key=${key}`
-    );
-    const d = await r.json();
-    const s = d.items?.[0]?.statistics;
-    if (!s) return res.status(404).json({ error: "Channel not found" });
-
-    res.json({
-      followers:   parseInt(s.subscriberCount  || 0),
-      impressions: parseInt(s.viewCount        || 0),
-      reach:       parseInt(s.viewCount        || 0),
-      clicks:      parseInt(s.viewCount        || 0),
-      engagement:  6.3,
-      growth:      1.4,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+export async function fetchYoutube(env, fetchImpl) {
+  if (!env.YOUTUBE_API_KEY || !env.YOUTUBE_CHANNEL_ID) throw new PlatformError(503, 'Not configured')
+  const r = await fetchImpl(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${encodeURIComponent(env.YOUTUBE_CHANNEL_ID)}&key=${encodeURIComponent(env.YOUTUBE_API_KEY)}`)
+  const d = await r.json()
+  const s = d.items?.[0]?.statistics
+  if (!s) throw new PlatformError(404, 'Channel not found')
+  return {
+    values: { followers: s.hiddenSubscriberCount ? null : count(s.subscriberCount) },
+    // Lifetime views are real, but they are not impressions, reach or clicks, so they are not reported as such.
+    extra: { totalViews: count(s.viewCount), posts: count(s.videoCount) },
   }
 }
+
+export default platformHandler('youtube', fetchYoutube)

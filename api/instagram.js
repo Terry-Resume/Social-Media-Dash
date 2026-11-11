@@ -1,24 +1,15 @@
-export default async function handler(req, res) {
-  const token  = process.env.INSTAGRAM_USER_TOKEN;
-  const userId = process.env.INSTAGRAM_USER_ID;
-  if (!token || !userId) return res.status(503).json({ error: "Not configured" });
+import { platformHandler, PlatformError, count } from './_lib/platform.js'
 
-  try {
-    const r = await fetch(
-      `https://graph.facebook.com/v18.0/${userId}?fields=followers_count,media_count&access_token=${token}`
-    );
-    const d = await r.json();
-    if (d.error) return res.status(400).json({ error: d.error.message });
-
-    res.json({
-      followers:   d.followers_count || 0,
-      impressions: 312000,
-      reach:       198000,
-      clicks:      8400,
-      engagement:  4.8,
-      growth:      3.2,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+export async function fetchInstagram(env, fetchImpl) {
+  if (!env.INSTAGRAM_USER_TOKEN || !env.INSTAGRAM_USER_ID) throw new PlatformError(503, 'Not configured')
+  // Set INSTAGRAM_GRAPH_VERSION to a Graph API version that is currently supported.
+  const version = env.INSTAGRAM_GRAPH_VERSION || 'v23.0'
+  const r = await fetchImpl(
+    `https://graph.facebook.com/${version}/${encodeURIComponent(env.INSTAGRAM_USER_ID)}?fields=followers_count,media_count&access_token=${encodeURIComponent(env.INSTAGRAM_USER_TOKEN)}`,
+  )
+  const d = await r.json()
+  if (d.error) throw new PlatformError(400, 'Instagram rejected the request')
+  return { values: { followers: count(d.followers_count) }, extra: { posts: count(d.media_count) } }
 }
+
+export default platformHandler('instagram', fetchInstagram)

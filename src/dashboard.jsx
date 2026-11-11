@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { useUser, useClerk } from "@clerk/clerk-react";
+import { apiFetch, useSession } from "@kato8/core/react";
+import { TEAM, STUDIO, toolUrl } from "@kato8/core";
+
+const HUB_URL = toolUrl("hub", (name) => import.meta.env[name]);
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,27 +36,29 @@ const PLATFORMS = [
   { id: "linkedin", label: "LinkedIn",   color: "#0A66C2", icon: "💼" },
 ];
 
-const TEAM_MEMBERS = ["Terry Teng", "Katie L", "Aaron R", "Ryan K", "Pride", "Bryan N"];
+// People come from the shared demo studio so every Kato.8 tool agrees on who is on the team.
+const TEAM_MEMBERS = ["ceo", "ux-003", "exec-001", "des-001", "des-005", "art-001"].map((id) => TEAM.find((m) => m.id === id)?.name).filter(Boolean);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SEED DATA
 // ─────────────────────────────────────────────────────────────────────────────
+// Shown only when a platform is not connected. All values are fictional sample data and are labelled as such in the UI.
 const DUMMY = {
-  instagram: { followers:0,    growth:0,    impressions:0,    engagement:0,   reach:0,    clicks:0   },
-  tiktok:    { followers:1065, growth:5.2,  impressions:8400, engagement:8.4, reach:3200, clicks:420 },
-  youtube:   { followers:0,    growth:0,    impressions:0,    engagement:0,   reach:0,    clicks:0   },
-  twitter:   { followers:0,    growth:0,    impressions:0,    engagement:0,   reach:0,    clicks:0   },
-  bluesky:   { followers:28,   growth:0,    impressions:94,   engagement:33.6,reach:28,   clicks:0   },
-  linkedin:  { followers:0,    growth:0,    impressions:0,    engagement:0,   reach:0,    clicks:0   },
+  instagram: { followers:12480, growth:2.8,  impressions:184000, engagement:4.6, reach:96500,  clicks:2310 },
+  tiktok:    { followers:8730,  growth:6.4,  impressions:402000, engagement:8.9, reach:258000, clicks:5120 },
+  youtube:   { followers:5190,  growth:1.9,  impressions:91000,  engagement:5.7, reach:61000,  clicks:1480 },
+  twitter:   { followers:3340,  growth:-0.6, impressions:47500,  engagement:2.2, reach:29800,  clicks:760  },
+  bluesky:   { followers:1870,  growth:3.3,  impressions:12900,  engagement:6.1, reach:8800,   clicks:190  },
+  linkedin:  { followers:940,   growth:1.1,  impressions:15200,  engagement:3.8, reach:11700,  clicks:420  },
 };
 const WEEKLY = [
-  { day:"Mon", instagram:0, tiktok:820,  youtube:0, twitter:0, bluesky:8,  linkedin:0 },
-  { day:"Tue", instagram:0, tiktok:950,  youtube:0, twitter:0, bluesky:12, linkedin:0 },
-  { day:"Wed", instagram:0, tiktok:710,  youtube:0, twitter:0, bluesky:6,  linkedin:0 },
-  { day:"Thu", instagram:0, tiktok:1200, youtube:0, twitter:0, bluesky:15, linkedin:0 },
-  { day:"Fri", instagram:0, tiktok:1450, youtube:0, twitter:0, bluesky:20, linkedin:0 },
-  { day:"Sat", instagram:0, tiktok:2100, youtube:0, twitter:0, bluesky:18, linkedin:0 },
-  { day:"Sun", instagram:0, tiktok:1800, youtube:0, twitter:0, bluesky:22, linkedin:0 },
+  { day:"Mon", instagram:5200, tiktok:9100,  youtube:2400, twitter:1300, bluesky:380, linkedin:420 },
+  { day:"Tue", instagram:5800, tiktok:10400, youtube:2700, twitter:1500, bluesky:410, linkedin:510 },
+  { day:"Wed", instagram:4900, tiktok:8800,  youtube:2300, twitter:1200, bluesky:350, linkedin:480 },
+  { day:"Thu", instagram:6300, tiktok:11800, youtube:3100, twitter:1700, bluesky:470, linkedin:530 },
+  { day:"Fri", instagram:7100, tiktok:13600, youtube:3500, twitter:1900, bluesky:520, linkedin:450 },
+  { day:"Sat", instagram:8400, tiktok:16200, youtube:4100, twitter:2100, bluesky:590, linkedin:260 },
+  { day:"Sun", instagram:7600, tiktok:14900, youtube:3800, twitter:1800, bluesky:540, linkedin:240 },
 ];
 const SENTIMENT = [
   { name:"Positive", value:61, color:"#E0607A" },
@@ -63,17 +68,17 @@ const SENTIMENT = [
 const COMMENTS_DATA = [
   { id:1, platform:"tiktok",   user:"@retrowave_dev", text:"This is exactly the vibe I needed — love the pixel art style 🎮", sentiment:"positive", time:"2h", likes:87 },
   { id:2, platform:"tiktok",   user:"@indiegamefan",  text:"Backed it! What engine are you building on?",                    sentiment:"positive", time:"3h", likes:42 },
-  { id:3, platform:"bluesky",  user:"kato-8.bsky",    text:"The retro aesthetic is so well done. Following for updates 🦋",  sentiment:"positive", time:"4h", likes:18 },
-  { id:4, platform:"twitter",  user:"@Kato8_Studios", text:"When's the demo dropping? Been watching since day 1",            sentiment:"positive", time:"5h", likes:31 },
+  { id:3, platform:"bluesky",  user:"studio.bsky",    text:"The retro aesthetic is so well done. Following for updates 🦋",  sentiment:"positive", time:"4h", likes:18 },
+  { id:4, platform:"twitter",  user:"@kato8_demo", text:"When's the demo dropping? Been watching since day 1",            sentiment:"positive", time:"5h", likes:31 },
   { id:5, platform:"twitter",  user:"@pixelskeptic",  text:"Crowdfunding a game studio feels risky — what's the plan?",      sentiment:"negative", time:"6h", likes:9  },
   { id:6, platform:"youtube",  user:"@8bitreviewer",  text:"Audio mix on the studio tour is a bit low, but content is 🔥",   sentiment:"neutral",  time:"8h", likes:23 },
 ];
 const MSGS_DATA = [
-  { id:1, from:"Katie", time:"9:14 AM",  text:"Studio tour edit is ready for review 🎬",   unread:true  },
+  { id:1, from:"Priya", time:"9:14 AM",  text:"Studio tour edit is ready for review 🎬",   unread:true  },
   { id:2, from:"You",   time:"9:22 AM",  text:"On it — will check before noon."                         },
-  { id:3, from:"Katie", time:"9:24 AM",  text:"Should we push the LinkedIn post to next week?"          },
+  { id:3, from:"Priya", time:"9:24 AM",  text:"Should we push the LinkedIn post to next week?"          },
   { id:4, from:"You",   time:"9:31 AM",  text:"Good call. Move it to April 30th."                       },
-  { id:5, from:"Katie", time:"10:02 AM", text:"Last Light devlog clip is cut and ready for TikTok 🚀", unread:true },
+  { id:5, from:"Priya", time:"10:02 AM", text:"Last Light devlog clip is cut and ready for TikTok 🚀", unread:true },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,18 +91,18 @@ const CMS_STATUSES = [
   { id:"posted",       label:"Posted",          color:"#22c55e", bg:"#101E18", border:"#1A4028", icon:"✅" },
 ];
 const CMS_SEED = [
-  { id:1,  title:"Studio Origin Story — Why Retro?",       type:"Video",    status:"posted",      platforms:["tiktok","youtube"],              assignee:"Terry", due:"Apr 18", notes:"1K+ views on TikTok",               tags:["founder","story"]         },
-  { id:2,  title:"Game Dev Day in the Life",               type:"Video",    status:"posted",      platforms:["tiktok","instagram"],            assignee:"Terry", due:"Apr 20", notes:"Strong engagement",                 tags:["bts","devlog"]            },
-  { id:3,  title:"Studio Tour — Behind the Pixel Curtain", type:"Video",    status:"editing",     platforms:["tiktok","youtube"],              assignee:"Katie", due:"Apr 25", notes:"Cut needs music + colour grade",    tags:["bts","studio"]            },
-  { id:4,  title:"Corebound Character Reveal — The Enforcer", type:"Carousel", status:"needs_post",  platforms:["instagram","twitter","bluesky"],  assignee:"Aaron R", due:"May 10", notes:"Art approved — caption finalised",    tags:["corebound","reveal"]      },
-  { id:5,  title:"Retro Game Feature Showcase",            type:"Carousel", status:"needs_post",  platforms:["instagram","bluesky"],           assignee:"Katie", due:"Apr 24", notes:"Design done, caption finalised",    tags:["game","feature"]          },
-  { id:6,  title:"Community Q&A — Ask the Dev",           type:"Thread",   status:"needs_post",  platforms:["twitter","bluesky"],             assignee:"Terry", due:"Apr 25", notes:"Draft approved",                    tags:["community","engagement"]  },
-  { id:7,  title:"Gameplay Walkthrough Clip",              type:"Video",    status:"editing",     platforms:["youtube","tiktok"],              assignee:"Katie", due:"Apr 26", notes:"Waiting on voiceover",              tags:["gameplay","tutorial"]     },
-  { id:8,  title:"Meet the Team — Katie",                  type:"Article",  status:"needs_record",platforms:["linkedin","instagram"],          assignee:"Terry", due:"Apr 28", notes:"Script approved, filming TBD",      tags:["team","culture"]          },
-  { id:9,  title:"Last Light — Development Update Video",   type:"Video",    status:"needs_record",platforms:["youtube","tiktok"],              assignee:"Katie", due:"May 15", notes:"Outline ready, needs filming",      tags:["lastlight","devlog"]      },
-  { id:10, title:"Retro vs Modern — Why It Matters",       type:"Carousel", status:"needs_record",platforms:["instagram","twitter","bluesky"], assignee:"Terry", due:"May 2",  notes:"Research done, design not started", tags:["retro","opinion"]         },
-  { id:11, title:"Team Spotlight — Bryan N (Lead Artist)",  type:"Article",  status:"needs_record",platforms:["linkedin","instagram"],           assignee:"Terry", due:"May 17", notes:"Script in progress",                tags:["team","spotlight"]        },
-  { id:12, title:"May Game Dev Sprint Teaser",             type:"Story",    status:"needs_record",platforms:["instagram","tiktok","bluesky"],  assignee:"Katie", due:"Apr 30", notes:"Not started",                       tags:["teaser","devlog"]         },
+  { id:1,  title:"Studio Origin Story — Why Retro?",       type:"Video",    status:"posted",      platforms:["tiktok","youtube"],              assignee:"Terry", due:"Nov 18", notes:"Strong views on TikTok",               tags:["founder","story"]         },
+  { id:2,  title:"Game Dev Day in the Life",               type:"Video",    status:"posted",      platforms:["tiktok","instagram"],            assignee:"Terry", due:"Nov 20", notes:"Strong engagement",                 tags:["bts","devlog"]            },
+  { id:3,  title:"Studio Tour — Behind the Pixel Curtain", type:"Video",    status:"editing",     platforms:["tiktok","youtube"],              assignee:"Priya", due:"Nov 25", notes:"Cut needs music + colour grade",    tags:["bts","studio"]            },
+  { id:4,  title:"Corebound Character Reveal — The Enforcer", type:"Carousel", status:"needs_post",  platforms:["instagram","twitter","bluesky"],  assignee:"Marisol Q", due:"Dec 10", notes:"Art approved — caption finalised",    tags:["corebound","reveal"]      },
+  { id:5,  title:"Retro Game Feature Showcase",            type:"Carousel", status:"needs_post",  platforms:["instagram","bluesky"],           assignee:"Priya", due:"Nov 24", notes:"Design done, caption finalised",    tags:["game","feature"]          },
+  { id:6,  title:"Community Q&A — Ask the Dev",           type:"Thread",   status:"needs_post",  platforms:["twitter","bluesky"],             assignee:"Terry", due:"Nov 25", notes:"Draft approved",                    tags:["community","engagement"]  },
+  { id:7,  title:"Gameplay Walkthrough Clip",              type:"Video",    status:"editing",     platforms:["youtube","tiktok"],              assignee:"Priya", due:"Nov 26", notes:"Waiting on voiceover",              tags:["gameplay","tutorial"]     },
+  { id:8,  title:"Meet the Team — Priya",                  type:"Article",  status:"needs_record",platforms:["linkedin","instagram"],          assignee:"Terry", due:"Nov 28", notes:"Script approved, filming TBD",      tags:["team","culture"]          },
+  { id:9,  title:"Last Light — Development Update Video",   type:"Video",    status:"needs_record",platforms:["youtube","tiktok"],              assignee:"Priya", due:"Dec 15", notes:"Outline ready, needs filming",      tags:["lastlight","devlog"]      },
+  { id:10, title:"Retro vs Modern — Why It Matters",       type:"Carousel", status:"needs_record",platforms:["instagram","twitter","bluesky"], assignee:"Terry", due:"Dec 2",  notes:"Research done, design not started", tags:["retro","opinion"]         },
+  { id:11, title:"Team Spotlight — Bexley C (Lead Artist)",  type:"Article",  status:"needs_record",platforms:["linkedin","instagram"],           assignee:"Terry", due:"Dec 17", notes:"Script in progress",                tags:["team","spotlight"]        },
+  { id:12, title:"December Dev Sprint Teaser",             type:"Story",    status:"needs_record",platforms:["instagram","tiktok","bluesky"],  assignee:"Priya", due:"Nov 30", notes:"Not started",                       tags:["teaser","devlog"]         },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,39 +122,34 @@ const PRIORITY_LEVELS = [
   { id:"low",      label:"Low",      color:"#7A75A0" },
 ];
 const TICKETS_SEED = [
-  { id:1, title:"Publish Last Light character reveal", description:"Coordinate and publish Last Light character reveal across TikTok, Instagram, and Twitter with matching caption set.", assignee:"Aaron R", due:"2026-05-10", priority:"critical", platforms:["tiktok","instagram","twitter"], status:"todo", tags:["lastlight","reveal"] },
-  { id:2, title:"Finish studio tour video edit",    description:"Complete colour grade, add music, export final cut.", assignee:"Katie",  due:"2026-04-24", priority:"high",     platforms:["tiktok","youtube"],     status:"in_progress", tags:["video","edit"]  },
-  { id:3, title:"Reply to TikTok comments",         description:"Respond to all unanswered comments from the last 3 posts.", assignee:"Terry", due:"2026-04-25", priority:"med",      platforms:["tiktok"],               status:"todo",        tags:["community"]    },
-  { id:4, title:"Write Bluesky Q&A thread",         description:"Draft a 10-post Q&A thread for Bluesky community engagement.", assignee:"Terry", due:"2026-04-25", priority:"med",      platforms:["bluesky"],              status:"todo",        tags:["community"]    },
-  { id:5, title:"Upload gameplay clip to YouTube",  description:"Edit 60s clip from raw footage, add captions.", assignee:"Katie",  due:"2026-04-26", priority:"low",      platforms:["youtube","tiktok"],     status:"backlog",     tags:["gameplay"]     },
-  { id:6, title:"Set up LinkedIn company page bio", description:"Write and publish official company bio with links.", assignee:"Terry", due:"2026-04-28", priority:"low",      platforms:["linkedin"],             status:"done",        tags:["setup"]        },
+  { id:1, title:"Publish Last Light character reveal", description:"Coordinate and publish Last Light character reveal across TikTok, Instagram, and Twitter with matching caption set.", assignee:"Marisol Q", due:"2026-12-10", priority:"critical", platforms:["tiktok","instagram","twitter"], status:"todo", tags:["lastlight","reveal"] },
+  { id:2, title:"Finish studio tour video edit",    description:"Complete colour grade, add music, export final cut.", assignee:"Priya",  due:"2026-11-24", priority:"high",     platforms:["tiktok","youtube"],     status:"in_progress", tags:["video","edit"]  },
+  { id:3, title:"Reply to TikTok comments",         description:"Respond to all unanswered comments from the last 3 posts.", assignee:"Terry", due:"2026-11-25", priority:"med",      platforms:["tiktok"],               status:"todo",        tags:["community"]    },
+  { id:4, title:"Write Bluesky Q&A thread",         description:"Draft a 10-post Q&A thread for Bluesky community engagement.", assignee:"Terry", due:"2026-11-25", priority:"med",      platforms:["bluesky"],              status:"todo",        tags:["community"]    },
+  { id:5, title:"Upload gameplay clip to YouTube",  description:"Edit 60s clip from raw footage, add captions.", assignee:"Priya",  due:"2026-11-26", priority:"low",      platforms:["youtube","tiktok"],     status:"backlog",     tags:["gameplay"]     },
+  { id:6, title:"Set up LinkedIn company page bio", description:"Write and publish official company bio with links.", assignee:"Terry", due:"2026-11-28", priority:"low",      platforms:["linkedin"],             status:"done",        tags:["setup"]        },
 ];
 const SCHED_SEED = [
-  { id:1, title:"Last Light devlog — week in the life",   platform:"tiktok",    date:"May 6",  time:"10:00 AM", status:"scheduled", type:"Video"    },
-  { id:2, title:"Corebound character art showcase",       platform:"instagram", date:"May 7",  time:"12:30 PM", status:"scheduled", type:"Carousel" },
-  { id:3, title:"Corebound dev diary — episode 1",        platform:"youtube",   date:"May 10", time:"2:00 PM",  status:"scheduled", type:"Video"    },
-  { id:4, title:"Q&A thread: ask the dev",                platform:"bluesky",   date:"May 11", time:"9:00 AM",  status:"draft",     type:"Thread"   },
-  { id:5, title:"Studio update — May sprint kickoff",     platform:"linkedin",  date:"May 12", time:"11:00 AM", status:"draft",     type:"Article"  },
-  { id:6, title:"Big Boss Cleanup gameplay reveal",       platform:"youtube",   date:"May 15", time:"3:00 PM",  status:"review",    type:"Video"    },
+  { id:1, title:"Last Light devlog — week in the life",   platform:"tiktok",    date:"Dec 6",  time:"10:00 AM", status:"scheduled", type:"Video"    },
+  { id:2, title:"Corebound character art showcase",       platform:"instagram", date:"Dec 7",  time:"12:30 PM", status:"scheduled", type:"Carousel" },
+  { id:3, title:"Corebound dev diary — episode 1",        platform:"youtube",   date:"Dec 10", time:"2:00 PM",  status:"scheduled", type:"Video"    },
+  { id:4, title:"Q&A thread: ask the dev",                platform:"bluesky",   date:"Dec 11", time:"9:00 AM",  status:"draft",     type:"Thread"   },
+  { id:5, title:"Studio update — December sprint kickoff",     platform:"linkedin",  date:"Dec 12", time:"11:00 AM", status:"draft",     type:"Article"  },
+  { id:6, title:"Big Boss Cleanup gameplay reveal",       platform:"youtube",   date:"Dec 15", time:"3:00 PM",  status:"review",    type:"Video"    },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-function fmt(n) { return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1000?(n/1000).toFixed(1)+"K":String(n); }
+// Metrics a platform API does not provide arrive as null and render as an em dash, never as 0 or an estimate.
+function fmt(n) { return n==null?"—":n>=1e6?(n/1e6).toFixed(1)+"M":n>=1000?(n/1000).toFixed(1)+"K":String(n); }
+const pct = (n) => n==null?"—":`${n}%`;
+const signedPct = (n) => n==null?"—":`${n>0?"+":""}${n}%`;
 function getPl(id)   { return PLATFORMS.find(p=>p.id===id); }
 function getSt(id)   { return CMS_STATUSES.find(s=>s.id===id); }
 function getTkSt(id) { return TICKET_STATUSES.find(s=>s.id===id); }
 function getPr(id)   { return PRIORITY_LEVELS.find(p=>p.id===id); }
 
-function PlatBadge({ id }) {
-  const p = getPl(id);
-  return <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border" style={{background:p?.color+"22",borderColor:p?.color+"44",color:p?.color}}>{p?.icon} {p?.label}</span>;
-}
-function StatusPill({ status }) {
-  const s = getSt(status);
-  return <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border" style={{background:s?.bg,borderColor:s?.border,color:s?.color}}>{s?.icon} {s?.label}</span>;
-}
 function ScBadge({ status }) {
   const m = { scheduled:`bg-emerald-900/40 text-emerald-300 border-emerald-700`, draft:`bg-amber-900/40 text-amber-300 border-amber-700`, review:`bg-blue-900/40 text-blue-300 border-blue-700` };
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${m[status]||m.draft}`}>{status[0].toUpperCase()+status.slice(1)}</span>;
@@ -168,7 +168,7 @@ function useLiveData() {
   const [available, setAvailable] = useState({});
   useEffect(() => {
     PLATFORMS.filter(p=>!p.manual).forEach(p=>{
-      fetch(`/api/${p.id}`)
+      apiFetch(`/api/${p.id}`)
         .then(r=>r.ok?r.json():null)
         .then(d=>{ if(d&&!d.error){ setLiveData(v=>({...v,[p.id]:d})); setAvailable(v=>({...v,[p.id]:true})); } })
         .catch(()=>{});
@@ -180,11 +180,11 @@ function useLiveData() {
 // ─────────────────────────────────────────────────────────────────────────────
 // AI AGENT
 // ─────────────────────────────────────────────────────────────────────────────
-const AGENT_SYSTEM = `You are Orbit AI, a specialist social media strategist and content agent for Kato.8 Studios — an indie retro game studio run by Terry Teng, developing three original titles: Last Light, Corebound, and Big Boss Cleanup.
+const AGENT_SYSTEM = `You are Orbit AI, a specialist social media strategist and content agent for ${STUDIO.name} — an indie retro game studio run by ${STUDIO.founder}, developing three original titles: ${STUDIO.projects.join(", ")}.
 
-Kato.8 Studios is active on TikTok (@kato.8_studios, 1,065 followers), Instagram (@kato.8_studios), YouTube (@Kato.8Studios), X/Twitter (@Kato8_Studios), Bluesky (@kato-8.bsky.social, 28 followers), and LinkedIn. Content pillars: game dev devlogs, art showcases, game reveals, team spotlights, and community engagement. Each game has its own voice — Last Light (atmospheric/narrative), Corebound (action/character-driven), Big Boss Cleanup (comedic/casual).
+The studio is active on TikTok, Instagram, YouTube, X/Twitter, Bluesky and LinkedIn. Content pillars: game dev devlogs, art showcases, behind-the-scenes studio life, community Q&As and release teasers.
 
-Their goals: grow TikTok and Bluesky followings, build hype for all three game titles, attract collaborators and players, and establish Kato.8 Studios as a credible indie studio voice.
+Their goals: grow the TikTok and Bluesky followings, build hype for all three game titles, attract collaborators and players, and establish the studio as a credible indie voice.
 
 When suggesting content:
 1. Reference what's already working (high-engagement content types)
@@ -215,9 +215,9 @@ function AIAgent({ cmsItems }) {
     const newMessages = [...messages,{role:"user",content:text}];
     setMessages(newMessages); setLoading(true);
     try {
-      const token = await window.Clerk?.session?.getToken();
-      const res = await fetch("/api/ai",{ method:"POST", headers:{"Content-Type":"application/json", ...(token?{Authorization:`Bearer ${token}`}:{})},
-        body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+      // The server chooses the model; the browser only sends the conversation.
+      const res = await apiFetch("/api/ai",{ method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ max_tokens:1000,
           system:AGENT_SYSTEM+`\n\nContent library:\n${existingContent}`, messages:newMessages })});
       const data = await res.json();
       const reply = data.content?.find(b=>b.type==="text")?.text||"Sorry, something went wrong.";
@@ -229,7 +229,7 @@ function AIAgent({ cmsItems }) {
   const QUICK_PROMPTS = [
     "Suggest 3 TikTok ideas for a retro game studio that could go viral",
     "Build a reveal campaign for the Last Light character roster",
-    "How do we grow from 1K to 10K TikTok followers faster?",
+    "How do we double our TikTok followers faster?",
     "What retro gaming trends should Kato.8 be tapping into?",
     "Analyse our existing content and tell me what we should do more of",
     "Give me a 7-day sprint plan across TikTok, Bluesky and YouTube",
@@ -330,12 +330,12 @@ function Analytics({ liveData, available }) {
       </div>
 
       {isLive
-        ? <div className="rounded-xl p-4 flex items-center gap-3" style={{background:"#0D2A1A",border:"1px solid #1A5030"}}><span className="text-xl">{plat?.icon}</span><p className="text-sm text-emerald-400">Showing <strong>live data</strong> for {plat?.label}.</p></div>
-        : <div className="rounded-xl p-4 flex items-center gap-3" style={{background:K8.surface,border:`1px dashed ${K8.border}`}}><span className="text-xl">{plat?.icon}</span><p className="text-sm" style={{color:K8.muted}}>Showing <strong style={{color:K8.white}}>demo data</strong> for {plat?.label}. Add the API key to Vercel env vars to go live.</p></div>
+        ? <div className="rounded-xl p-4 flex items-center gap-3" style={{background:"#0D2A1A",border:"1px solid #1A5030"}}><span className="text-xl">{plat?.icon}</span><p className="text-sm text-emerald-400">Showing <strong>{data.source==="demo"?"demo data (fictional)":"live data"}</strong> for {plat?.label}.{data.source!=="demo"&&data.unavailable?.length>0&&<span style={{color:K8.muted}}> Not provided by the platform API: {data.unavailable.join(", ")} (shown as —).</span>}</p></div>
+        : <div className="rounded-xl p-4 flex items-center gap-3" style={{background:K8.surface,border:`1px dashed ${K8.border}`}}><span className="text-xl">{plat?.icon}</span><p className="text-sm" style={{color:K8.muted}}>Showing <strong style={{color:K8.white}}>sample data</strong> for {plat?.label} — not connected. Add the API key to Vercel env vars to go live.</p></div>
       }
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[{l:"Followers",v:fmt(data.followers)},{l:"Growth",v:`${data.growth>0?"+":""}${data.growth}%`,c:data.growth>0?"#22c55e":data.growth<0?"#E87055":K8.mutedLight},{l:"Impressions",v:fmt(data.impressions)},{l:"Eng. Rate",v:`${data.engagement}%`},{l:"Reach",v:fmt(data.reach)},{l:"Clicks",v:fmt(data.clicks)}].map(k=>(
+        {[{l:"Followers",v:fmt(data.followers)},{l:"Growth",v:signedPct(data.growth),c:data.growth>0?"#22c55e":data.growth<0?"#E87055":K8.mutedLight},{l:"Impressions",v:fmt(data.impressions)},{l:"Eng. Rate",v:pct(data.engagement)},{l:"Reach",v:fmt(data.reach)},{l:"Clicks",v:fmt(data.clicks)}].map(k=>(
           <div key={k.l} className="rounded-xl p-4 border" style={{background:K8.card,borderColor:K8.border}}>
             <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{color:K8.muted}}>{k.l}</p>
             <p className="text-xl font-bold" style={{color:k.c||K8.white}}>{k.v}</p>
@@ -343,7 +343,7 @@ function Analytics({ liveData, available }) {
         ))}
       </div>
       <Card>
-        <p className="text-sm font-semibold mb-4" style={{color:K8.white}}>Weekly Impressions — All Platforms</p>
+        <p className="text-sm font-semibold mb-4" style={{color:K8.white}}>Weekly Impressions — All Platforms (sample series)</p>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={WEEKLY}>
             <defs>{PLATFORMS.map(p=><linearGradient key={p.id} id={`g${p.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={p.color} stopOpacity={0.3}/><stop offset="95%" stopColor={p.color} stopOpacity={0}/></linearGradient>)}</defs>
@@ -586,7 +586,6 @@ function Projects() {
   function TicketCard({ t }) {
     const pr   = getPr(t.priority);
     const st   = getTkSt(t.status);
-    const tags = typeof t.tags==="string"?t.tags.split(",").map(x=>x.trim()).filter(Boolean):t.tags||[];
     return (
       <div className="rounded-xl border p-4 space-y-3 hover:brightness-110 transition-all" style={{background:K8.card,borderColor:K8.border}}>
         <div className="flex items-start justify-between gap-2">
@@ -706,10 +705,10 @@ function Projects() {
 // SCHEDULER
 // ─────────────────────────────────────────────────────────────────────────────
 function Scheduler() {
+  const inputStyle={background:K8.surface,border:`1px solid ${K8.border}`,color:K8.white,borderRadius:"8px",padding:"6px 10px",fontSize:"13px",outline:"none",width:"100%"};
   const [posts,setposts]=useState(SCHED_SEED);const[filter,setFilter]=useState("all");const[showForm,setShowForm]=useState(false);const[np,setNp]=useState({title:"",platform:"tiktok",date:"",time:"",type:"Post"});
   const filtered=filter==="all"?posts:posts.filter(p=>p.status===filter);
   function add(){if(!np.title||!np.date||!np.time)return;setposts(p=>[...p,{...np,id:Date.now(),status:"draft"}]);setNp({title:"",platform:"tiktok",date:"",time:"",type:"Post"});setShowForm(false);}
-  const inputStyle={background:K8.surface,border:`1px solid ${K8.border}`,color:K8.white,borderRadius:"8px",padding:"8px 12px",fontSize:"14px",outline:"none"};
   return(
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -733,13 +732,13 @@ function Comms(){
       <div className="rounded-xl border overflow-hidden" style={{background:K8.card,borderColor:K8.border}}>
         <div className="px-5 py-3 flex items-center gap-3" style={{borderBottom:`1px solid ${K8.border}`}}>
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{background:K8.purple,color:"#fff"}}>K</div>
-          <div><p className="text-sm font-semibold" style={{color:K8.white}}>Katie — Content Manager</p><p className="text-xs text-emerald-400 font-medium">● Online</p></div>
+          <div><p className="text-sm font-semibold" style={{color:K8.white}}>Priya — Content Manager</p><p className="text-xs text-emerald-400 font-medium">● Online</p></div>
         </div>
         <div className="p-5 space-y-3 h-72 overflow-y-auto" style={{background:K8.dark}}>
           {msgs.map(m=><div key={m.id} className={`flex ${m.from==="You"?"justify-end":"justify-start"}`}><div className="max-w-xs px-4 py-2.5 rounded-2xl text-sm" style={m.from==="You"?{background:K8.pink,color:"#fff",borderRadius:"16px 16px 4px 16px"}:{background:K8.card,color:K8.white,borderRadius:"4px 16px 16px 16px"}}>{m.text}<p className="text-xs mt-1 opacity-40">{m.time}</p></div></div>)}
         </div>
         <div className="p-3 flex gap-2" style={{borderTop:`1px solid ${K8.border}`}}>
-          <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message Katie…" className="flex-1 rounded-lg px-3 py-2 text-sm outline-none" style={{background:K8.surface,border:`1px solid ${K8.border}`,color:K8.white}}/>
+          <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message Priya…" className="flex-1 rounded-lg px-3 py-2 text-sm outline-none" style={{background:K8.surface,border:`1px solid ${K8.border}`,color:K8.white}}/>
           <button onClick={send} className="px-4 py-2 text-xs font-medium rounded-lg" style={{background:K8.pink,color:"#fff"}}>Send</button>
         </div>
       </div>
@@ -777,15 +776,14 @@ function Community(){
 const SETUP_GUIDES={
   instagram:{steps:["Go to developers.facebook.com → My Apps → Create App","Add Instagram Basic Display product","Generate a long-lived User Access Token","Add INSTAGRAM_USER_TOKEN + INSTAGRAM_USER_ID to Vercel env vars"]},
   tiktok:   {steps:["Apply at business-api.tiktok.com","Create an app and get an Access Token","Add TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID to Vercel env vars"]},
-  youtube:  {steps:["Go to console.cloud.google.com → APIs & Services","Enable YouTube Data API v3 and create an API Key","Add YOUTUBE_API_KEY to Vercel — channel ID UCQYpZ5N4ZIEY_NfczLCI3KQ is already set"]},
-  twitter:  {steps:["Go to developer.twitter.com → Projects & Apps","Create a project, copy the Bearer Token","Add TWITTER_BEARER_TOKEN to Vercel — username Kato8_Studios is already set"]},
-  bluesky:  {steps:["No key needed! Bluesky data pulls automatically from the public API","Live data is already active for @kato-8.bsky.social ✓"]},
+  youtube:  {steps:["Go to console.cloud.google.com → APIs & Services","Enable YouTube Data API v3 and create an API Key","Add YOUTUBE_API_KEY + YOUTUBE_CHANNEL_ID to Vercel env vars"]},
+  twitter:  {steps:["Go to developer.twitter.com → Projects & Apps","Create a project, copy the Bearer Token","Add TWITTER_BEARER_TOKEN to Vercel — set TWITTER_USERNAME to the studio handle"]},
+  bluesky:  {steps:["No key needed. Bluesky data comes from the public API","Set BLUESKY_HANDLE (for example studio.bsky.social) in Vercel"]},
   linkedin: {steps:["Go to developer.linkedin.com → My Apps → Create app","Request r_organization_social + r_organization_followers scopes","Add LINKEDIN_ACCESS_TOKEN + LINKEDIN_ORG_ID to Vercel env vars"]},
 };
 
 function Connect({available}){
   const[expanded,setExpanded]=useState(null);
-  const inputStyle={background:K8.surface,border:`1px solid ${K8.border}`,color:K8.white,borderRadius:"8px",padding:"6px 10px",fontSize:"13px",outline:"none",width:"100%"};
   return(
     <div className="space-y-4">
       <div className="rounded-xl p-4 flex gap-3" style={{background:"#101E38",border:"1px solid #1A3A68"}}>
@@ -826,7 +824,7 @@ const NAV=[
 ];
 
 export default function Dashboard(){
-  const{user}=useUser();const{signOut}=useClerk();
+  const session=useSession();const signOut=()=>window.Clerk?.signOut?.();const emailOrRole=session.demo?`demo · ${session.role}`:window.Clerk?.user?.primaryEmailAddress?.emailAddress;
   const{liveData,available}=useLiveData();
   const[tab,setTab]=useState("analytics");
   const[cmsItems]=useState(CMS_SEED);
@@ -866,10 +864,10 @@ export default function Dashboard(){
 
           {/* User */}
           <div className="ml-auto flex items-center gap-3">
-            {user&&<>
-              <span className="text-xs hidden md:block" style={{color:K8.muted}}>{user.primaryEmailAddress?.emailAddress}</span>
-              <a href="https://kato8studiosapp.xyz" target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded-lg transition-colors hidden sm:inline-flex items-center gap-1" style={{color:K8.muted,border:`1px solid ${K8.border}`,textDecoration:'none'}}>← Hub</a>
-              <button onClick={()=>signOut()} className="text-xs px-2 py-1 rounded-lg transition-colors" style={{color:K8.muted,border:`1px solid ${K8.border}`}} onMouseEnter={e=>{e.target.style.color=K8.white;e.target.style.borderColor=K8.borderLight;}} onMouseLeave={e=>{e.target.style.color=K8.muted;e.target.style.borderColor=K8.border;}}>Sign out</button>
+            {session&&<>
+              <span className="text-xs hidden md:block" style={{color:K8.muted}}>{emailOrRole}</span>
+              <a href={HUB_URL} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded-lg transition-colors hidden sm:inline-flex items-center gap-1" style={{color:K8.muted,border:`1px solid ${K8.border}`,textDecoration:'none'}}>← Hub</a>
+              {!session.demo&&<button onClick={()=>signOut()} className="text-xs px-2 py-1 rounded-lg transition-colors" style={{color:K8.muted,border:`1px solid ${K8.border}`}} onMouseEnter={e=>{e.target.style.color=K8.white;e.target.style.borderColor=K8.borderLight;}} onMouseLeave={e=>{e.target.style.color=K8.muted;e.target.style.borderColor=K8.border;}}>Sign out</button>}
             </>}
           </div>
         </div>
